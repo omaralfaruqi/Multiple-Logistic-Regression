@@ -1,0 +1,639 @@
+---
+title: "MULTIPLE LOGISTIC REGRESSION ANALYSIS"
+author: "Dr. Muhammad Abdul Hafiz bin Kamarul Zaman, Dr Omar bin Nazmi, Dr Muhammad Za'im bin Mohd Samsuri, Dr Syuaib Aiman Amir bin Kamarudin"
+date: 31 December 2024
+format:
+html:
+toc: true
+toc-title: Contents
+toc-location: left
+toc-depth: 3
+toc-expand: 1
+number-sections: true
+code-fold: true
+code-summary: "Show the Code"
+theme:
+  light: united
+  dark: cyborg
+  embed-resources: true
+editor: visual
+---
+
+![Team picture](videofinal.gif)
+
+# 1.INTRODUCTION
+
+This dataset is about factor associated with Catastrophic Health Expenditure (CHE) among adult cancer patients in HPUSM. CHE in this study uses the Budget share method in which it defines the CHE as out-of-pocket health expenditure above 10% from total monthly income. The study involved 209 participants with 8 variables.
+
+## Research question
+
+Is there any associated between age, gender, ethnicity, patient education level, patient occupation,household leader occupation, GL holder and poverty income with CHE among adult cancer patient?
+
+## Variable Selection
+
+the variables potential risk factors for CHE which are:
+
+Sociodemographic factors : gender (categorical/nominal), race (categorical/nominal), age (continuous numerical), education level(categorical/ordinal), patient employment status(categorical/ordinal),
+
+Household factors: head of household gender(categorical/nominal data), head of household occupation (categorical/ordinal), poverty income group and GL status (categorical/nominal data)
+
+outcome : CHE category (binary which is experience CHE and not)
+
+# 2. METHOD
+
+## Load libraries
+
+```{r}
+library(haven)
+library(tidyverse)
+library(gtsummary)
+library(broom)
+library(knitr)
+library(tidyr)
+library(dplyr)
+library(corrplot)
+library(readxl)
+library(janitor)
+library(dagitty)
+library(rmdformats)
+```
+
+## Read Data
+
+```{r}
+CHE_data <- read_excel("CHE hafiz.xlsx")
+View(CHE_data)
+```
+
+## View Data
+
+```{r}
+summary(CHE_data)
+```
+
+```{r}
+str(CHE_data)
+```
+
+```{r}
+glimpse(CHE_data)
+```
+
+## Transform Data
+
+```{r}
+CHE_data <- clean_names(CHE_data)
+CHE_data$he_income_percent <- CHE_data$he_income_percent*100
+CHE_data <- CHE_data %>%
+  mutate(
+    CHE_category = ifelse(he_income_percent > 10, "Yes", "No"),
+  poverty_income = ifelse(monthly_income <= 2508, "poverty", "non-poverty"))
+CHE_data$education_level <- factor(
+  CHE_data$education_level,
+  levels = c("Tertiary", "Secondary", "Primary", "No formal Education"))
+CHE_data$household_leader_occupation <- factor(
+  CHE_data$household_leader_occupation,
+  levels = c("Government servant/pensioner", "Private sector worker", "Self employed", "Unemployed"))
+CHE_data$gl <- factor(CHE_data$gl, levels = c("Yes", "No"))
+CHE_data$CHE_category <- factor(CHE_data$CHE_category, levels = c("No", "Yes"))
+CHE_data <- CHE_data %>% 
+  mutate(across(where(is.character),as_factor))
+summary(CHE_data)
+```
+
+## Describe Data
+
+```{r}
+CHE_outcome <- CHE_data %>% 
+  tbl_summary(by= CHE_category,
+    include = c(-CHE_category, -he_income_percent),
+    statistic = list(all_continuous() ~ "{mean} ({sd})",
+              all_categorical()~ "{n} / {N} ({p}%)"),
+digits = all_continuous() ~ 2 ) %>%
+  modify_caption("Characteristic (N ={N})" )
+
+CHE_outcome %>% 
+  as_gt()
+```
+
+## Explore Data
+
+## Plots
+
+Histogram for numerical Barplots for categorical
+
+### age
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(age)) + 
+  geom_histogram() + 
+  facet_grid(. ~ CHE_category)
+```
+
+### Gender
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(gender)) + 
+  geom_bar() +
+  facet_grid(. ~ CHE_category)
+```
+
+### Race
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(race)) + 
+  geom_bar() +
+  facet_grid(. ~ CHE_category)
+```
+
+### education level
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(education_level)) + 
+  geom_bar() +
+  facet_grid(. ~ CHE_category)
+```
+
+### patient occupation
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(patient_occupation)) + 
+  geom_bar() +
+  facet_grid(. ~ CHE_category)
+```
+
+### government GL
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(gl)) + 
+  geom_bar() +
+  facet_grid(. ~ CHE_category)
+```
+
+### household leader occupation
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(household_leader_occupation)) + 
+  geom_bar() +
+  facet_grid(. ~ CHE_category)
+```
+
+### poverty income
+
+```{r}
+CHE_data %>% 
+  ggplot(aes(poverty_income)) + 
+  geom_bar() +
+  facet_grid(. ~ CHE_category)
+```
+
+## Check Multicollinearity
+
+```{r}
+Data.CHE.col <- 
+  CHE_data %>% 
+  select(where(is.numeric))
+```
+
+```{r}
+cor.Data.CHE <-
+  cor(Data.CHE.col, use = "complete.obs", method = "pearson")
+head(round(cor.Data.CHE,2))
+```
+
+```{r}
+corrplot(cor.Data.CHE, type = 'upper', order = 'hclust')
+```
+
+From the correlation plot and correlation matrix, the health expenditure and health income percentage data were highly correlated.health expenditure is the numerator for the CHE formula, which cause it to be highly correlated to it. The monthly income already represented by the categorical data of poverty income in which it is more significant to present the monthly income data. Hence, monthly income is removed from model.
+
+the transportation cost, food cost, accomodation cost, and job rentrenchment cost were included in the study related to direct non medical cost and indirect medical cost, which is not related to CHE. thus these variables were omitted from the model.
+
+# 3. RESULTS
+
+## Estimation
+
+## Simple Logistic Regression
+
+```{r}
+slr.CHE <- glm(CHE_category ~ 1, data = CHE_data, family = binomial(link = "logit"))
+add1(slr.CHE,scope = ~ age + race + gender + gl + education_level + patient_occupation + household_leader_occupation + poverty_income, test = "LRT")
+```
+
+```{r}
+summary(slr.CHE)
+```
+
+## Summary table simple logistic regression for all the Variables
+
+```{r}
+tbl_uvregression(
+  data = CHE_data,
+  method = glm,
+  y = CHE_category,
+  include = c(age, gender, race, education_level, patient_occupation, gl, household_leader_occupation, poverty_income), # List variables to include
+  method.args = list(family = binomial),exponentiate = TRUE) %>%        
+  bold_labels() %>%
+  italicize_levels() %>%
+  as_gt() %>%
+  gt::tab_header(title = "Table 1. Simple Logistic Regression")
+
+```
+
+## Multiple Logistic Regression
+
+## Model A (without interaction)
+
+based on univariable analysis and literature review, 5 variables were included in the model, all variables are categorical data
+
+```{r}
+mlr.CHE <- glm(CHE_category ~ race + education_level + gl + household_leader_occupation + poverty_income, family = binomial(link="logit"), data = CHE_data)
+summary(mlr.CHE)
+```
+
+## Multiple Logistic Regression with interaction
+
+```{r}
+mlr.CHE.int <- glm(CHE_category ~ race + education_level + gl + household_leader_occupation + poverty_income + gl*race , family = binomial(link="logit"), data = CHE_data)
+summary(mlr.CHE.int)
+```
+
+## Model Selection
+
+```{r}
+anova(mlr.CHE, mlr.CHE.int, test = 'Chisq')
+```
+
+```{r}
+anova_result <- anova(mlr.CHE, mlr.CHE.int, test = "LRT")
+print(anova_result)
+```
+
+```{r}
+AIC(mlr.CHE, mlr.CHE.int)
+```
+
+From the ANOVA test, it shows the p-value \> 0.05 which represent no significant difference between both model. the AIC also close between both model. we choose the model without interaction for further analysis
+
+# 4. PREDICTION
+
+Now, our preliminary final model is (mlr.CHE)
+
+```{r}
+prem.final.mod <- mlr.CHE
+prem.final.mod
+```
+
+## log odds
+
+```{r}
+tidy(prem.final.mod, conf.int = TRUE)
+```
+
+## odds ratio
+
+```{r}
+tidy(prem.final.mod, exponentiate = TRUE, conf.int = TRUE)
+```
+
+## predict probability
+
+Then, we proceed with prediction.
+
+Formula for odds = probability / 1 - probability Formula for probability = Odds / 1 + Odds
+
+```{r}
+Prob.CHE <- augment(prem.final.mod, type.predict = 'response')  
+Prob.CHE
+```
+
+To get probability, must include type.predict = 'response', if not, the fitted values will produce the log odds
+
+```{r}
+head(model.matrix(prem.final.mod))
+```
+
+type = 'response' is to predict probability , while type = 'link' is to predict log odds
+
+```{r}
+head(predict(prem.final.mod, type = 'link'))
+```
+
+```{r}
+head(predict(prem.final.mod, type = 'response'))
+```
+
+These are the predicted probability and log odds for the first 6 observation.
+
+Then, we try to manually calculate and compare with the result above:
+
+For example, we took the first observation:
+
+race = 0, secondary education = 1, gl holder = 0, Unemployed household leader occupation = 1, poverty income = 0
+
+Formula for log odds = B0 + B1X1 + B2X2 …….
+
+Predicted log odds for second observation =
+
+```{r}
+(-2.1573)+(1.8640*0)+(0.5883*1)+(1.0029*1)
+```
+
+```{r}
+exp(-0.5661)
+```
+
+Manual calculation of predicted probability:
+
+Formula for probability: Odds / 1 + Odds
+
+```{r}
+0.5677353/ (1+0.5677353)
+```
+
+another method
+
+## Prediction using New Data
+
+creating new dataframe
+
+```{r}
+newdataCHE <- expand.grid(race = c('Malay', 'Non-Malay'),
+                       education_level = c('Tertiary', 'Secondary', 'Primary', 'No formal Education'),
+                       household_leader_occupation = c( "Government servant/pensioner", "Private sector worker", "Self employed", "Unemployed"),
+                       poverty_income = c('poverty', 'non-poverty'),
+                       gl = c('Yes', 'No'))
+
+head(newdataCHE)
+tail(newdataCHE)
+```
+
+Then, once we created new dataframe, we can predict log odds and probability using similiar approach as above.
+
+```{r}
+predict.prob <- augment(prem.final.mod, newdata = newdataCHE, type.predict = 'response')     
+head(predict.prob)
+```
+
+```{r}
+predict.logodds <- augment(prem.final.mod, newdata = newdataCHE, type.predict = 'link')          
+head(predict.logodds)
+```
+
+## using the new data
+
+Predicted log odds for first observation = malay + tertiary education + government servant/pensioner + poverty income + GL holder
+
+```{r}
+(-2.1573)+(0.1192*1)+(-0.9771*1)
+```
+
+```{r}
+exp(-3.0152)
+```
+
+## Manual calculation of predicted probability:
+
+Formula for probability: Odds / 1 + Odds
+
+```{r}
+0.04903603/ (1+0.04903603)
+```
+
+## Model checking
+
+```{r}
+prem.final.prob <- 
+  augment(prem.final.mod, type.predict = 'response') %>%
+  mutate(pred.class = factor(ifelse(.fitted > 0.5, 'Yes', 'No')))
+library(caret)
+```
+
+```{r}
+levels(prem.final.prob$CHE_category)
+levels(prem.final.prob$pred.class)
+prem.final.prob$CHE_category <- as.factor(prem.final.prob$CHE_category)
+prem.final.prob$pred.class <- as.factor(prem.final.prob$pred.class)
+levels(prem.final.prob$pred.class) <- levels(prem.final.prob$CHE_category)
+prem.final.prob$CHE_category <- droplevels(prem.final.prob$CHE_category)
+prem.final.prob$pred.class <- droplevels(prem.final.prob$pred.class)
+summary(prem.final.prob$CHE_category)
+summary(prem.final.prob$pred.class)
+prem.final.prob <- na.omit(prem.final.prob)
+library(caret)
+
+# Ensure both variables are factors with the same levels
+prem.final.prob$CHE_category <- as.factor(prem.final.prob$CHE_category)
+prem.final.prob$pred.class <- as.factor(prem.final.prob$pred.class)
+levels(prem.final.prob$pred.class) <- levels(prem.final.prob$CHE_category)
+
+# Calculate the confusion matrix
+confusionMatrix(prem.final.prob$pred.class, prem.final.prob$CHE_category)
+
+```
+
+Accuracy : The model correctly classify 87.1%
+
+Sensitivity: The model can predict 98.9% of occurence of CHE from sample population among those identified to have CHE.
+
+Specificity : The model can predict 28.6% of absence CHE from sample population among those who do not have CHE.
+
+# 5. CHECKING GOODNESS OF FIT
+
+by using:
+
+Area under the curve (AU-ROC curve) Hosmer-Lemeshow test Modified Hosmer-Lemeshow test Omnibus Goodness of Fit test
+
+## ROC Curve
+
+```{r}
+library(pROC)
+```
+
+```{r}
+roc_curve <- roc(CHE_category ~ predict(prem.final.mod, type = "response"), data = CHE_data)
+```
+
+```{r}
+auc(roc_curve)
+```
+
+```{r}
+plot(roc_curve)
+```
+
+Area under Receiver of Operating Characteristic Curve (AUC-ROC):
+
+AUC-ROC is 79.31%, the model is considered good discriminating effect.
+
+## Omnibus goodness of fit test
+
+```{r}
+install.packages("rms")
+library("rms")
+```
+
+```{r}
+prem.final.res <- lrm(
+  CHE_category ~ race + education_level + gl + household_leader_occupation +
+    poverty_income,
+  data = CHE_data,
+  y = TRUE,
+  x = TRUE
+)
+residuals(prem.final.res, type = "gof")
+```
+
+## Hosmer lemeshow test
+
+```{r}
+library(generalhoslem)
+```
+
+```{r}
+logitgof(CHE_data$CHE_category, fitted(prem.final.mod), g = 10)
+```
+
+## Diagnostic Plot
+
+```{r}
+plot(prem.final.mod)
+```
+
+Hence, all of above goodness of fit test shows that our model (prem.final.mod) has good fit.
+
+## Identify influential outlier
+
+```{r}
+# Calculate influence measures
+infl <- influence.measures(prem.final.mod)
+
+data2.pred.res <- augment(prem.final.mod)
+data2.pred.res
+
+```
+
+```{r}
+non.influen.obs <- 
+  data2.pred.res %>% 
+  filter(.std.resid < 2 & .std.resid > -2 )
+```
+
+## Adjusted Model
+
+## Fit the logistic regression model again using the filtered data
+
+```{r}
+mlr.filtered.influential <- glm(CHE_category ~ race + education_level + gl + household_leader_occupation + poverty_income, family = binomial(link="logit"), data = non.influen.obs)
+tidy(mlr.filtered.influential, conf.int = TRUE)
+```
+
+```{r}
+plot(mlr.filtered.influential)
+```
+
+## reperform model checking after model adjustment
+
+```{r}
+mlr.filtered.prob <- 
+  augment(mlr.filtered.influential, type.predict = 'response') %>%
+  mutate(pred.class = factor(ifelse(.fitted > 0.5, 'Yes', 'No')))
+```
+
+```{r}
+library(caret)
+confusionMatrix(mlr.filtered.prob$CHE_category, mlr.filtered.prob$pred.class)
+```
+
+## Omnibus goodness of fit test
+
+```{r}
+install.packages("rms")
+library("rms")
+```
+
+```{r}
+prem.final.inf.res <- lrm(
+  CHE_category ~ race + education_level + gl + household_leader_occupation +
+    poverty_income,
+  data = CHE_data,
+  y = TRUE,
+  x = TRUE
+)
+residuals(prem.final.inf.res, type = "gof")
+```
+
+```{r}
+
+logitgof(non.influen.obs$CHE_category, fitted(mlr.filtered.influential), g = 10)
+```
+
+```{r}
+library(pROC)
+roc_curve2 <- roc(CHE_category ~ predict(mlr.filtered.influential, type = "response"), data = non.influen.obs)
+plot(roc_curve)
+```
+
+```{r}
+auc(roc_curve2)
+```
+
+The adjusted model shows an improvement in accuracy (90.1%) compared to the preliminary final model (87.1%).
+
+Sensitivity in the adjusted model is 93.3% compared to the preliminary final model (98.85%), indicating the proportion of true positive cases correctly identified. Specificity in the adjusted model is (68.4%) compared to the preliminary final model (28.57%), indicating the proportion of true negative cases correctly identified.
+
+The AU-ROC value is relatively high (94.9%), indicating good discriminatory power, increasing from 79.3% of preliminary final model.
+
+the overall Hosmer-Lemeshow GOF test(p \>0.05) and Omnibus GOF test (p\>0.05) for both model shows goodness of fit
+
+We propose to present the Adjusted model - (mlr.filtered.influential) as our logistic regression model as it improve the accuracy and fulfill the criteria for goodness of fit
+
+## model summaries
+
+```{r}
+summary(mlr.filtered.influential)
+```
+
+## Interpretation
+
+```{r}
+Modelfinal <- mlr.filtered.influential
+tidy(Modelfinal, conf.int = TRUE)
+```
+
+```{r}
+tidy(Modelfinal, exponentiate = TRUE, conf.int = TRUE)
+```
+
+```{r}
+tbl_regression(Modelfinal, exponentiate = TRUE) %>% bold_labels() %>% italicize_levels() %>% as_gt() %>% gt::tab_header(title = "Table 3. Multiple Logistic Regression")
+```
+
+```{r}
+tbl_regression(Modelfinal) %>% bold_labels() %>% italicize_levels() %>% as_gt() %>% gt::tab_header(title = "Table 4. Multiple Logistic Regression") 
+```
+
+
+# 6. LOGISTIC REGRESSION EQUATION
+
+logit(p) = log(p/(1-p)) = β0 + β1∗RaceMalay + β2∗glYes + β3*educatin_levelsecondary + β4∗education_levelprimary + β5∗education_levelnoformaleducation + β6*household_leader_occupationprivate + β7∗household_leader_occupationselfemployed + β8∗household_leader_occupationunemployed + β9∗nonpoverty_income
+
+logit(p) = log(p/(1-p)) = (-40.535762) + (2.762792)∗RaceNonMalay + (1.469345)∗glNo + (18.607023)*education_levelsecondary + (19.380689)∗education_levelprimary + (21.181490)∗education_levelnoformaleducation + (16.955919)*household_leader_occupationprivate + (17.707592)∗household_leader_occupationselfemployed + (19.565661)∗household_leader_occupationunemployed + (1.203422)∗nonpoverty_income
+
+# 7. INTERPRETATION
+
+1.  In this study, Non malay, and GL holder is a significant predictors for CHE
+2.  The log odds of CHE in Non malay is 2.8 compared to Malay (95% CI: 0.98,5.0, p-value:0.006) when adjusted to GL holder
+3.  Non malay has 15.8 times the odds of experiencing CHE compared to Malay (95% CI: 2.65,150, p-value: 0.012) when adjusted to GL holder
+4.  The log odds of CHE in Non-GL holder is 1.5 compared to GL holder (95% CI: 0.14,3.0, p-value: 0.042) when adjusted to Non malay
+5.  Non-GL holder has 4.35 times the odds of experiencing CHE compared GL holder (95% CI: 1.15,20.4, p-value: 0.042) when adjusted to Non-malay
+6.  being non-malay and non GL holder is a risk to experience CHE
+7.  However, the 95% CI is wide, showed less precision. this might be due to high variability or inadequate data.
+8.  household leader occupation, education level and poverty income is not a significant predictors for CHE for this study
